@@ -1,3 +1,5 @@
+#if HAVE_OPENGL
+
 #include "SDL.h"
 #include "SDL_opengl.h"
 #include "glextns.h"
@@ -73,6 +75,8 @@ bool initGLExtensions() {
         
 }
 // ----------------------------------------
+
+#endif /* HAVE_OPENGL */
 
 
 

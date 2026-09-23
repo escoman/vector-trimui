@@ -1,9 +1,13 @@
 #include <string>
 #include <inttypes.h>
+#include <cstdio>
+#include <cstdlib>
 #include "globaldefs.h"
 #if !defined(__ANDROID_NDK__) && !defined(__GODOT__)
 #include "SDL.h"
+#if HAVE_OPENGL
 #include "SDL_opengl.h"
+#endif
 #include "icon.h"
 #else
 #include "event.h"
@@ -100,7 +104,11 @@ void TV::init()
     this->refresh_rate = display_mode.refresh_rate;
 
     if (Options.opengl) {
+#if HAVE_OPENGL
         this->init_opengl();
+#else
+        this->init_regular();
+#endif
     }
     else {
         this->init_regular();
@@ -112,7 +120,11 @@ void TV::init_regular()
 {
 #if !defined(__ANDROID_NDK__) && !defined(__GODOT__)
     int window_options = SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE;
-    int renderer_options = SDL_RENDERER_ACCELERATED;
+    /* Do not force SDL_RENDERER_ACCELERATED: on framebuffer/KMSDRM targets
+     * only the software renderer may exist, and a NULL renderer here would
+     * later cause wild writes through NULL textures. flags=0 lets SDL pick
+     * the best available renderer (still accelerated on desktop). */
+    int renderer_options = 0;
     if (Options.vsync) {
         renderer_options |= SDL_RENDERER_PRESENTVSYNC;
     }
@@ -126,6 +138,10 @@ void TV::init_regular()
             window_width, window_height, window_options);
     this->renderer = SDL_CreateRenderer(this->window, -1, 
             renderer_options);
+    if (this->window == NULL || this->renderer == NULL) {
+        fprintf(stderr, "SDL video init failed: %s\n", SDL_GetError());
+        exit(1);
+    }
 
     SDL_RendererInfo rinfo;
     SDL_GetRendererInfo(this->renderer, &rinfo);
@@ -156,7 +172,9 @@ void TV::init_regular()
             this->pixelformat = SDL_PIXELFORMAT_BGR888;
             break;
         default:
-            printf("Unknown native pixelformat: %08x\n", window_pixelformat);
+            printf("Unknown native pixelformat: %08x, falling back to ARGB8888\n",
+                    window_pixelformat);
+            this->pixelformat = SDL_PIXELFORMAT_ARGB8888;
             break;
     }
 
@@ -178,6 +196,10 @@ void TV::init_regular()
     for (int i = 0; i < TV::NTEXTURES; ++i) {
         this->texture[i] = SDL_CreateTexture(this->renderer, this->pixelformat,
                 SDL_TEXTUREACCESS_STREAMING, this->tex_width, this->tex_height);
+        if (this->texture[i] == NULL) {
+            fprintf(stderr, "SDL_CreateTexture failed: %s\n", SDL_GetError());
+            exit(1);
+        }
     }
     this->texture_n = 0;
 
@@ -375,7 +397,11 @@ void TV::render_with_blend(int src_alpha)
 void TV::render_single()
 {
     if (Options.opengl) {
+#if HAVE_OPENGL
         this->render_single_opengl();
+#else
+        this->render_single_regular();
+#endif
     }
     else {
         this->render_single_regular();

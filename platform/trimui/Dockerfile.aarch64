@@ -1,0 +1,53 @@
+# Cross-build environment for TrimUI Brick Pro / CrossMix-OS (AArch64).
+#
+# Builds a sysroot with SDL2 (headers + shared lib for linking) and the Boost
+# components v06x needs, then the project can be compiled with:
+#   cmake -DCMAKE_TOOLCHAIN_FILE=platform/trimui/trimui-aarch64.toolchain.cmake \
+#         -DTRIMUI=ON -DCMAKE_BUILD_TYPE=Release ..
+#
+# NOTE: the base image / glibc and the SDL2 version should be aligned with the
+# actual CrossMix-OS image running on the device so the produced binary and the
+# bundled Boost .so files load correctly there.
+
+FROM ubuntu:focal-20201106
+ENV DEBIAN_FRONTEND=noninteractive
+
+ARG SYSROOT=/opt/cross/aarch64-crossmix
+ARG SDL2_VERSION=2.0.12
+ARG BOOST_VERSION=1.75.0
+ARG BOOST_UNDERSCORED=1_75_0
+
+RUN apt-get update && apt-get install --yes --no-install-recommends \
+    build-essential cmake make pkg-config wget ca-certificates xxd \
+    gcc-aarch64-linux-gnu g++-aarch64-linux-gnu binutils-aarch64-linux-gnu \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN mkdir -p ${SYSROOT}
+
+# --- SDL2 (headers + shared library used only for linking; the device provides
+# --- the actual runtime libSDL2-2.0.so.0)
+WORKDIR /tmp
+RUN wget -q -O- https://www.libsdl.org/release/SDL2-${SDL2_VERSION}.tar.gz | tar zxf - && \
+    cd SDL2-${SDL2_VERSION} && \
+    ./configure --host=aarch64-linux-gnu --prefix=${SYSROOT} \
+        --disable-pulseaudio --disable-esd --disable-oss \
+        --disable-video-x11 --disable-video-wayland --disable-video-opengl \
+        --disable-render-metal && \
+    make -j$(nproc) install && \
+    cd /tmp && rm -rf /tmp/*
+
+# --- Boost (shared) : thread, system, filesystem, program_options, chrono
+WORKDIR /tmp
+RUN wget -q -O- https://archives.boost.io/release/${BOOST_VERSION}/source/boost_${BOOST_UNDERSCORED}.tar.gz | tar zxf - && \
+    cd boost_${BOOST_UNDERSCORED} && \
+    ./bootstrap.sh --without-icu --prefix=${SYSROOT} && \
+    echo "using gcc : arm64 : aarch64-linux-gnu-g++ ;" > user-config.jam && \
+    ./b2 --user-config=user-config.jam toolset=gcc-arm64 \
+        architecture=arm address-model=64 binary-format=elf target-os=linux \
+        link=shared threading=multi variant=release \
+        --with-system --with-thread --with-filesystem \
+        --with-program_options --with-chrono \
+        install --prefix=${SYSROOT} && \
+    cd /tmp && rm -rf /tmp/*
+
+WORKDIR /builder

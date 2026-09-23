@@ -1,5 +1,38 @@
 #include "emulator.h"
 
+#include <cstdio>
+
+/* Translate a gamepad button into the equivalent Vector-06C keyboard
+ * scancode. The mapping is intentionally simple and can be adjusted after
+ * testing on real hardware (see port spec, section 11). The Vector-06C
+ * keyboard matrix itself is not modified. */
+static SDL_Scancode controller_button_scancode(SDL_GameControllerButton button)
+{
+    switch (button) {
+        case SDL_CONTROLLER_BUTTON_DPAD_UP:    return SDL_SCANCODE_UP;
+        case SDL_CONTROLLER_BUTTON_DPAD_DOWN:  return SDL_SCANCODE_DOWN;
+        case SDL_CONTROLLER_BUTTON_DPAD_LEFT:  return SDL_SCANCODE_LEFT;
+        case SDL_CONTROLLER_BUTTON_DPAD_RIGHT: return SDL_SCANCODE_RIGHT;
+        case SDL_CONTROLLER_BUTTON_A:          return SDL_SCANCODE_RETURN; /* ВК */
+        case SDL_CONTROLLER_BUTTON_B:          return SDL_SCANCODE_SPACE;
+        case SDL_CONTROLLER_BUTTON_X:          return SDL_SCANCODE_ESCAPE; /* АП2 */
+        case SDL_CONTROLLER_BUTTON_Y:          return SDL_SCANCODE_TAB;
+        case SDL_CONTROLLER_BUTTON_BACK:       return SDL_SCANCODE_F6;     /* RUS/LAT */
+        default:                               return SDL_SCANCODE_UNKNOWN;
+    }
+}
+
+/* Build a synthetic keyboard event so gamepad input reuses the existing
+ * KEYDOWN/KEYUP path (board.handle_keydown/keyup). */
+static SDL_KeyboardEvent make_key_event(SDL_Scancode scancode)
+{
+    SDL_KeyboardEvent e;
+    SDL_memset(&e, 0, sizeof(e));
+    e.keysym.scancode = scancode;
+    e.keysym.sym = SDL_GetKeyFromScancode(scancode);
+    return e;
+}
+
 static void kick_timer()
 {
     extern uint32_t timer_callback(uint32_t interval, void * param);
@@ -124,6 +157,18 @@ void Emulator::run_event_loop()
     threadevent threadev;
     bool end = false;
     bool kickstart = true;
+    /* Open the first available game controller, if any. On TrimUI/CrossMix
+     * the built-in gamepad is exposed through the SDL GameController API. */
+    SDL_InitSubSystem(SDL_INIT_GAMECONTROLLER);
+    if (SDL_NumJoysticks() > 0) {
+        SDL_GameControllerOpen(0);
+    }
+    /* Prime the engine once. On framebuffer/KMSDRM targets the first
+     * SDL_WINDOWEVENT_EXPOSED may be delivered seconds late, and the engine
+     * thread blocks in wait_pull() until the first EXECUTE_FRAME is posted.
+     * Without this kick the screen stays black until that expose event
+     * finally arrives (observed as a ~20s startup delay on TrimUI). */
+    kick_timer();
     /* tests: kick-spin the event loop */
     if (Options.nosound && Options.novideo) {
         kick_timer();
@@ -157,11 +202,36 @@ void Emulator::run_event_loop()
                     ui_to_engine_queue.push(threadevent(QUIT, 0));
                     end = true;
                     break;
+                case SDL_CONTROLLERBUTTONDOWN:
+                case SDL_CONTROLLERBUTTONUP:
+                    {
+                        bool down = (event.type == SDL_CONTROLLERBUTTONDOWN);
+                        SDL_GameControllerButton b =
+                            (SDL_GameControllerButton)event.cbutton.button;
+                        /* START exits back to the CrossMix launcher */
+                        if (b == SDL_CONTROLLER_BUTTON_START && down) {
+                            ui_to_engine_queue.push(threadevent(QUIT, 0));
+                            end = true;
+                            break;
+                        }
+                        SDL_Scancode sc = controller_button_scancode(b);
+                        if (sc != SDL_SCANCODE_UNKNOWN) {
+                            SDL_KeyboardEvent ke = make_key_event(sc);
+                            ui_to_engine_queue.push(
+                                    threadevent(down ? KEYDOWN : KEYUP, ke));
+                        }
+                    }
+                    break;
                 default:
                     break;
             }
         }
     }
+    /* Stop the audio callback before joining: it posts EXECUTE_FRAME into
+     * ui_to_engine_queue, and that queue (with its mutexes) is destroyed
+     * right after main() returns. A callback firing during/after teardown
+     * would lock a destroyed mutex and abort with boost::lock_error. */
+    board.pause_sound(1);
     join_emulator_thread();
 }
 

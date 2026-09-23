@@ -1,0 +1,13 @@
+{
+    "label": "VECTOR-06C",
+    "icon": "/mnt/SDCARD/Icons/Default/Emus/VECTOR06C.png",
+    "background": "/mnt/SDCARD/Backgrounds/Default/VECTOR06C.png",
+    "iconsel": "",
+    "launch": "launch.sh",
+    "rompath": "../../Roms/VECTOR06C",
+    "imgpath": "../../Imgs/VECTOR06C",
+    "useswap": 0,
+    "shortname": 0,
+    "hidebios": 1,
+    "extlist": "rom|fdd|r0m"
+}

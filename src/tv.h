@@ -9,7 +9,9 @@
 #include "event.h"
 #else
 #include "SDL.h"
+#if HAVE_OPENGL
 #include "SDL_opengl.h"
+#endif
 #endif
 
 #include "options.h"
@@ -35,7 +37,7 @@ private:
 
     uint32_t pixelformat;
 
-#if !defined(__ANDROID_NDK__) && !defined(__GODOT__)
+#if !defined(__ANDROID_NDK__) && !defined(__GODOT__) && HAVE_OPENGL
     SDL_GLContext gl_context;
     GLuint gl_textures[NTEXTURES];
     GLuint gl_program_id;

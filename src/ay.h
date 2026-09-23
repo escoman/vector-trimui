@@ -89,7 +89,7 @@ public:
             this->noiv = this->noir & 1;
             this->noir = (this->noir ^ (this->noiv * 0x24000)) >> 1;
         }
-        return 0.3333f * (this->cstep(0) + this->cstep(1) + this->cstep(2));
+        return /* 0.3333f * */ (this->cstep(0) + this->cstep(1) + this->cstep(2));
     }
 
     void aymute()

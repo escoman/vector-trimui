@@ -1,6 +1,7 @@
 #include <iostream>
 #include <fstream>
 #include <iterator>
+#include <cstdio>
 
 #include "memory.h"
 #include "vio.h"
@@ -13,7 +14,18 @@
 #include "sound.h"
 #include "ay.h"
 #include "wav.h"
+/* Defaults keep desktop/Makefile builds fully featured unless the build
+ * system explicitly disables these (e.g. the TRIMUI profile). */
+#if !defined(VECTOR06_ENABLE_GDB)
+#define VECTOR06_ENABLE_GDB 1
+#endif
+#if !defined(VECTOR06_ENABLE_SCRIPTING)
+#define VECTOR06_ENABLE_SCRIPTING 1
+#endif
+
+#if VECTOR06_ENABLE_GDB
 #include "server.h"
+#endif
 #include "SDL.h"
 #include "util.h"
 #include "version.h"
@@ -22,7 +34,9 @@
 #include <gperftools/profiler.h>
 #endif
 
+#if VECTOR06_ENABLE_SCRIPTING
 #include "scriptnik.h"
+#endif
 
 void load_edd(Memory & memory)
 {
@@ -74,8 +88,11 @@ TV tv;
 PixelFiller filler(memory, io, tv);
 Board board(memory, io, filler, soundnik, tv, tape_player);
 
+#if VECTOR06_ENABLE_GDB
 GdbServer gdbserver(board);
+#endif
 
+#if VECTOR06_ENABLE_SCRIPTING
 Scriptnik scriptnik;
 
 void bootstrap_scriptnik()
@@ -176,6 +193,7 @@ void bootstrap_scriptnik()
         scriptnik.start();
     }
 }
+#endif /* VECTOR06_ENABLE_SCRIPTING */
 
 
 int main(int argc, char ** argv)
@@ -190,7 +208,9 @@ int main(int argc, char ** argv)
         prec = &rec;
     }
 
+#if VECTOR06_ENABLE_GDB
     gdbserver.init();
+#endif
 
     filler.init();
     soundnik.init(prec);    // this may switch the audio output off
@@ -239,9 +259,11 @@ int main(int argc, char ** argv)
 
     atexit(SDL_Quit);
 
+#if VECTOR06_ENABLE_GDB
     board.poll_debugger = [](void) {
         gdbserver.poll();
     };
+#endif
 
 #if HAVE_GPERFTOOLS
     if (Options.profile) {
@@ -250,7 +272,9 @@ int main(int argc, char ** argv)
     }
 #endif
 
+#if VECTOR06_ENABLE_SCRIPTING
     bootstrap_scriptnik();
+#endif
 
     Emulator lator(board);
     lator.start_emulator_thread();

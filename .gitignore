@@ -8,3 +8,7 @@ debian/vector06sdl*
 .gradle
 android/build
 *.os
+
+# TrimUI Brick Pro port build artifacts
+platform/trimui/build/
+platform/trimui/release/
