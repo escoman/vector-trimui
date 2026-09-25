@@ -90,13 +90,39 @@ void Board::reset(Board::ResetMode mode)
             this->memory.detach_boot();
             printf("Board::reset() detached boot\n");
             break;
-        case ResetMode::LOADROM:
+        case ResetMode::LOADROM: {
             this->memory.detach_boot();
             i8080_jump(Options.pc);
             i8080_setreg_sp(0xc300);
             printf("Board::reset() detached boot, pc=%04x sp=%04x\n",
                     i8080_pc(), i8080_regs_sp());
+
+            /* A loaded ROM starts with the boot ROM skipped, but on the
+             * real machine it is boots.bin that initializes the sound
+             * hardware. Without this the state the previous ROM left
+             * behind -- an i8253 counter still running in square-wave
+             * mode or a latched PIA Port C tape-out level -- keeps
+             * sounding as a stuck note under the new ROM: soundnik.reset()
+             * above only re-inits the AY chip.
+             * Replicate the boots.bin prologue at 0x0000-0x000f:
+             *   OUT 04,9B / OUT 00,88 / OUT 08,A8 / OUT 08,68 / OUT 08,28
+             * i.e. PPI2 control word, PIA1 control word (Port C low, tape
+             * out silent) and all three i8253 counters back into mode 0
+             * (output low until a count is loaded). */
+            io.commit();            /* apply an OUT the old ROM latched */
+            static const uint8_t boot_init[][2] = {
+                { 0x04, 0x9B },
+                { 0x00, 0x88 },
+                { 0x08, 0xA8 },
+                { 0x08, 0x68 },
+                { 0x08, 0x28 },
+            };
+            for (const auto & w : boot_init) {
+                io.output(w[0], w[1]);
+                io.commit();        /* no frame runs here: apply at once */
+            }
             break;
+        }
     }
 
     last_opcode = 0;
