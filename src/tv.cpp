@@ -2,6 +2,7 @@
 #include <inttypes.h>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include "globaldefs.h"
 #if !defined(__ANDROID_NDK__) && !defined(__GODOT__)
 #include "SDL.h"
@@ -15,6 +16,11 @@
 
 #include "options.h"
 #include "tv.h"
+
+#ifdef VECTOR06_GUI
+#include "layer.h"
+#include "layer_draw.h"
+#endif
 
 
 #if HAVE_OPENGL
@@ -45,6 +51,7 @@ TV::~TV()
     if (Options.novideo) {
         delete[] bmp;
     }
+    delete[] frame_copy;
 }
 
 int TV::probe()
@@ -202,6 +209,12 @@ void TV::init_regular()
         }
     }
     this->texture_n = 0;
+
+#ifdef VECTOR06_GUI
+    /* Persistent machine-frame copy for the save-state screenshots
+     * (see copy_latest_rgb); refreshed in the regular render paths. */
+    this->frame_copy = new uint32_t[this->tex_width * this->tex_height];
+#endif
 
     SDL_RenderSetLogicalSize(this->renderer, window_width, window_height);
 
@@ -378,6 +391,13 @@ void TV::render_with_blend(int src_alpha)
     int A = this->texture_n;
     int B = (this->texture_n + 1) & 1;
 
+#ifdef VECTOR06_GUI
+    if (this->bmp && this->frame_copy) {
+        memcpy(this->frame_copy, this->bmp,
+               (size_t)Options.screen_width * Options.screen_height * 4);
+    }
+#endif
+
     /* render single frame */
     SDL_UnlockTexture(this->texture[A]);
     this->bmp = NULL;
@@ -390,6 +410,7 @@ void TV::render_with_blend(int src_alpha)
     SDL_SetTextureAlphaMod(this->texture[B], src_alpha);
     SDL_RenderCopy(this->renderer, this->texture[B], NULL, NULL);
 
+    this->last_presented = A;
     this->texture_n = (this->texture_n + 1) & 1;
 #endif
 }
@@ -413,16 +434,125 @@ void TV::render_single_regular()
 #if !defined(__ANDROID_NDK__) && !defined(__GODOT__)
     /* render single frame */
     int t = this->texture_n;
+#ifdef VECTOR06_GUI
+    if (this->bmp && this->frame_copy) {
+        memcpy(this->frame_copy, this->bmp,
+               (size_t)Options.screen_width * Options.screen_height * 4);
+    }
+#endif
     SDL_UnlockTexture(this->texture[t]);
     this->bmp = NULL;
     SDL_SetTextureBlendMode(this->texture[t], SDL_BLENDMODE_NONE);
     SDL_SetTextureAlphaMod(this->texture[t], 255);
     SDL_RenderClear(this->renderer);
     SDL_RenderCopy(this->renderer, this->texture[t], NULL, NULL);
+    this->last_presented = t;
     this->texture_n = this->texture_n + 1;
     if (this->texture_n >= TV::NTEXTURES) this->texture_n = 0;
 #endif
 }
+
+/* Re-present the frame drawn before the machine was frozen. The paused
+ * picture lives in texture[last_presented]; the ping-pong cursor is not
+ * advanced, so consecutive frozen frames show the same stable image
+ * (the GUI overlay on top is what actually changes). */
+void TV::render_frozen()
+{
+#if !defined(__ANDROID_NDK__) && !defined(__GODOT__)
+    int t = this->last_presented;
+    this->bmp = NULL;
+    SDL_SetTextureBlendMode(this->texture[t], SDL_BLENDMODE_NONE);
+    SDL_SetTextureAlphaMod(this->texture[t], 255);
+    SDL_RenderClear(this->renderer);
+    SDL_RenderCopy(this->renderer, this->texture[t], NULL, NULL);
+#endif
+}
+
+/* Draw the GUI overlay (dim backdrop + active UILayers in z-order) above
+ * the machine picture, in the 480x272 UI space mapped onto the renderer
+ * logical size by layer_draw_begin(). */
+void TV::draw_ui_overlay()
+{
+#ifdef VECTOR06_GUI
+#if !defined(__ANDROID_NDK__) && !defined(__GODOT__)
+    layer_draw_begin(this->renderer);
+
+    /* Repaint any layer whose visual state changed since the last frame.
+     * paint() and draw() both run on the UI thread here, so the raster
+     * is always current before the quad is blitted. */
+    for (int i = 0; i < this->ui_layer_count; ++i) {
+        if (this->ui_layers[i]->is_active() && this->ui_layers[i]->needs_repaint()) {
+            this->ui_layers[i]->paint();
+        }
+    }
+
+    bool any_dim = false;
+    for (int i = 0; i < this->ui_layer_count; ++i) {
+        if (this->ui_layers[i]->is_active() && this->ui_layers[i]->wants_dim()) {
+            any_dim = true;
+            break;
+        }
+    }
+    if (any_dim) {
+        layer_draw_dim_overlay();
+    }
+
+    for (int i = 0; i < this->ui_layer_count; ++i) {
+        if (this->ui_layers[i]->is_active()) {
+            this->ui_layers[i]->draw();
+        }
+    }
+#endif
+#endif
+}
+
+void TV::set_ui_layers(UILayer ** layers, int count)
+{
+    this->ui_layers = layers;
+    this->ui_layer_count = count;
+}
+
+void TV::set_frozen(bool f)
+{
+    this->frozen = f;
+}
+
+#ifdef VECTOR06_GUI
+/* Screenshot source: the persistent frame copy (pure machine picture,
+ * the GUI overlay never reaches it) converted from the streaming-texture
+ * pixel format into 0xAABBGGRR with opaque alpha, exactly what img_save
+ * and the StateWindow thumbnail shrinker consume. */
+void TV::copy_latest_rgb(uint32_t * dst)
+{
+#if !defined(__ANDROID_NDK__) && !defined(__GODOT__)
+    const int w = Options.screen_width;
+    const int h = Options.screen_height;
+    if (!this->frame_copy) {
+        memset(dst, 0, (size_t)w * h * sizeof(uint32_t));
+        return;
+    }
+
+    int bpp = 0;
+    Uint32 rm = 0, gm = 0, bm = 0, am = 0;
+    SDL_PixelFormatEnumToMasks(this->pixelformat, &bpp, &rm, &gm, &bm, &am);
+    auto shift_of = [](Uint32 m) {
+        int s = 0;
+        while (m && !(m & 1)) { m >>= 1; ++s; }
+        return s;
+    };
+    const int rs = shift_of(rm), gs = shift_of(gm), bs = shift_of(bm);
+
+    const uint32_t * src = this->frame_copy;
+    for (int i = 0; i < w * h; ++i) {
+        const uint32_t p = src[i];
+        const uint32_t r = (p & rm) >> rs;
+        const uint32_t g = (p & gm) >> gs;
+        const uint32_t b = (p & bm) >> bs;
+        dst[i] = 0xff000000u | (b << 16) | (g << 8) | r;
+    }
+#endif
+}
+#endif
 
 void TV::render_single_opengl()
 {
@@ -487,7 +617,10 @@ void TV::render(int executed)
 {
     static int prev_executed;
     if (!Options.novideo) {
-        if (Options.blendmode == 0) {
+        if (frozen) {
+            render_frozen();
+        }
+        else if (Options.blendmode == 0) {
             if (executed) render_single();
         } 
         else if (Options.blendmode == 1) {
@@ -504,6 +637,12 @@ void TV::render(int executed)
             }
         }
 #if !defined(__ANDROID_NDK__) && !defined(__GODOT__)
+#ifdef VECTOR06_GUI
+        /* GUI overlay is drawn above the picture and below the present. */
+        if (!Options.opengl) {
+            draw_ui_overlay();
+        }
+#endif
         /* it is actually better to call SDL_RenderPresent
          * because it maintains the pace. Otherwise we use 100% CPU
          * when stopped in debugger. */

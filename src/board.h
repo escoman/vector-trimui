@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stdio.h>
+#include <atomic>
 #include <vector>
 #include <functional>
 #if !defined(__ANDROID_NDK__) && !defined(__GODOT__)
@@ -43,6 +44,12 @@ private:
     bool irq;
     bool inte;          /* CPU INTE pin */
     bool irq_carry;     /* imitates cpu waiting after T2 when INTE */
+
+    /* GUI pause latch (TrimUI service menu). While set, the CPU is not
+     * executed but the frame cadence keeps reporting a rendered frame so
+     * the audio pump, the RENDER events and the overlay stay alive at
+     * 50 Hz and the frozen picture can be redrawn under the menu. */
+    std::atomic<bool> paused{false};
 
     Memory & memory;
     IO & io;
@@ -100,7 +107,12 @@ public:
     int execute_frame_with_cadence(bool update_screen, bool use_cadence);
     void single_step(bool update_screen);
 
+    /* GUI pause control (see the paused member). */
+    void set_paused(bool p) { paused.store(p, std::memory_order_relaxed); }
+    bool is_paused() const { return paused.load(std::memory_order_relaxed); }
+
     TV & get_tv() const { return tv; }
+    Memory & get_memory() const { return memory; }
     Soundnik & get_soundnik() const { return soundnik; }
 
 public:

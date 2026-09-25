@@ -163,6 +163,12 @@ int Board::execute_frame(bool update_screen)
 
 int Board::execute_frame_with_cadence(bool update_screen, bool use_cadence)
 {
+    if (paused.load(std::memory_order_relaxed)) {
+        /* Frozen by the GUI: do not run the CPU, but report a rendered
+         * frame so the audio pump keeps the 50 Hz cadence and TV keeps
+         * re-presenting the frozen picture with the overlay on top. */
+        return 1;
+    }
     volatile bool c = cadence_allows();
     return (c || !use_cadence) && execute_frame(update_screen);
 }

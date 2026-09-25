@@ -38,6 +38,11 @@ if(TRIMUI)
     # The codebase is C++17 (see common.mk); the generic -std=gnu++14 added
     # above is too old for e.g. std::clamp in sound.cpp. The later flag wins.
     add_definitions(-std=gnu++17)
+    # Service GUI ported from the PSP build: overlay windows, Main Menu,
+    # About and the on-screen keyboard, drawn above the picture by TV.
+    # Guarded so the desktop Makefile/CMake builds stay GUI-free.
+    add_definitions(-DVECTOR06_GUI=1)
+    include_directories(gui)
     # No ARM32 flags and no -mcpu: rely on the aarch64 toolchain defaults.
     set(BFDNAME -O elf64-littleaarch64 -B aarch64)
     # The embedded objcopy blobs expose their size as an absolute symbol
@@ -92,6 +97,30 @@ if(VECTOR06_ENABLE_SCRIPTING)
 endif()
 if(VECTOR06_ENABLE_GDB)
     list(APPEND SOURCE_FILES src/server.cpp)
+endif()
+
+if(TRIMUI)
+    # Service GUI (gui/) and its PNG/asset support, TRIMUI-only. The
+    # desktop Makefile globs src/ and never sees gui/, so these stay out
+    # of the non-TRIMUI builds (which also leave VECTOR06_GUI undefined).
+    list(APPEND SOURCE_FILES
+        gui/layer_draw.cpp
+        gui/popup.cpp
+        gui/mainmenu.cpp
+        gui/about.cpp
+        gui/vkbd.cpp
+        gui/statewindow.cpp
+        gui/rombrowser.cpp
+        gui/mapwindow.cpp
+        gui/message.cpp
+        gui/gamecenter.cpp
+        gui/netman.cpp
+        src/imgload.cpp
+        src/statefile.cpp
+        src/filelist.cpp
+        src/keymap.cpp
+        src/stb_impl.cpp
+        src/logo_data.cpp)
 endif()
 
 # OpenGL shader blobs are only referenced when HAVE_OPENGL is set.

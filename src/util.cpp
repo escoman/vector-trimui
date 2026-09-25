@@ -12,6 +12,7 @@
 #include <fcntl.h>
 #include <sstream>
 #include <cstdio>
+#include <stdexcept>
 
 namespace util {
 
@@ -98,6 +99,29 @@ std::vector<uint8_t> load_binfile(const std::string path_)
     return bin;
 }
 
+int save_binfile(const std::string& path_, const std::vector<uint8_t>& data)
+{
+    std::string path = trim_copy(path_);
+    if (path.size() == 0) {
+        return 0;
+    }
+
+    ssize_t written = 0;
+    try {
+        int fd = open(path.c_str(), O_CREAT | O_WRONLY | O_TRUNC | O_BINARY, 0600);
+        if (fd < 0) {
+            throw std::invalid_argument("cannot open file for writing: " + path);
+        }
+        written = write(fd, (char *)data.data(), data.size());
+        close(fd);
+    }
+    catch (const std::exception& e) {
+        printf("Failed to save file: %s (%s)\n", path.c_str(), e.what());
+    }
+
+    return written;
+}
+
 std::tuple<std::string,std::string,std::string> 
 split_path(const std::string & path)
 {
@@ -154,6 +178,27 @@ void str_toupper(std::string & s)
     for (auto & c : s) {
         c = std::toupper(c);
     }
+}
+
+int careful_rename(std::string const& from, std::string const& to)
+{
+    int res = rename(from.c_str(), to.c_str());
+    if (res != 0) {
+        /* The target may exist and the platform might refuse the atomic
+         * replace: move it aside first, then retry. */
+        std::string bak = util::tmpname(to);
+        do {
+            res = rename(to.c_str(), bak.c_str());
+            if (0 != res) {
+                break;
+            }
+            res = rename(from.c_str(), to.c_str());
+        } while (0);
+
+        unlink(bak.c_str());
+    }
+
+    return res;
 }
 
 }

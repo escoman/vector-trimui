@@ -45,6 +45,11 @@ void options(int argc, char ** argv)
     Options.gl.default_shader = true;
     Options.gl.filtering = true;
 
+    /* Game Center server (plain HTTP, the archive has no TLS). Set
+     * before load() so a config file without these keys keeps them. */
+    Options.catalog_url = "http://roms2.sarmin.ru/catalog.php?platform=Vector-06C";
+    Options.download_url = "http://roms2.sarmin.ru/download.php?file=";
+
     try {
         std::string conf = Options.get_config_path();
         Options.load(conf);
@@ -418,6 +423,9 @@ void _options::load(const std::string & filename)
     volume.ay = pt.get<float>("audio.volume.ay");
     volume.covox = pt.get<float>("audio.volume.covox");
     volume.global = pt.get<float>("audio.volume");
+
+    catalog_url = pt.get<std::string>("net.catalog_url", catalog_url);
+    download_url = pt.get<std::string>("net.download_url", download_url);
 }
 
 void _options::save(const std::string & filename)
@@ -449,6 +457,11 @@ void _options::save(const std::string & filename)
     pt.put("audio.volume.ay", volume.ay);
     pt.put("audio.volume.covox", volume.covox);
     pt.put("audio.volume", volume.global);
+
+    if (!catalog_url.empty())
+        pt.put("net.catalog_url", catalog_url);
+    if (!download_url.empty())
+        pt.put("net.download_url", download_url);
 
     write_json(filename, pt);
 }

@@ -63,6 +63,11 @@ struct _options
     std::vector<int> save_frames;
     std::string audio_rec_path;
 
+    /* Game Center (TRIMUI GUI): the online catalog INI and the base URL
+     * the rom_file/preview paths of its entries are appended to. */
+    std::string catalog_url;
+    std::string download_url;
+
     void load(const std::string & filename);
     void save(const std::string & filename);
     std::string get_config_path(void);

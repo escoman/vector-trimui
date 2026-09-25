@@ -150,7 +150,7 @@ private:
         static int keymap_tab[] = {
                 /* scancode             column      bit     */
                 SDL_SCANCODE_SPACE,         0x780,
-                SDL_SCANCODE_GRAVE,         0x701,
+                SDL_SCANCODE_GRAVE,         0x740,
                 SDL_SCANCODE_RIGHTBRACKET,  0x720,
                 SDL_SCANCODE_BACKSLASH,     0x710,
                 SDL_SCANCODE_LEFTBRACKET,   0x708,
@@ -220,6 +220,10 @@ private:
                 SDL_SCANCODE_RETURN,        0x004,
                 SDL_SCANCODE_RALT,          0x002,
                 SDL_SCANCODE_TAB,           0x001,
+                /* VKBD numpad cluster: HOME/END stand in for the
+                 * ^\ (F7) and СТР (F8) keys, matching the PSP port. */
+                SDL_SCANCODE_HOME,          0x101, // ^\
+                SDL_SCANCODE_END,           0x102, // СТР
         };
 
         for (unsigned i = 0; i < sizeof(keymap_tab)/sizeof(keymap_tab[0]); i += 2) {

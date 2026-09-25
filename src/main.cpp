@@ -30,6 +30,22 @@
 #include "util.h"
 #include "version.h"
 
+#ifdef VECTOR06_GUI
+#include "mainmenu.h"
+#include "about.h"
+#include "vkbd.h"
+#include "statewindow.h"
+#include "rombrowser.h"
+#include "mapwindow.h"
+#include "gamecenter.h"
+#include "message.h"
+#include "layer.h"
+
+/* The ROM flips this latch together with the input mode on every РУС/ЛАТ
+ * press; the VKBD LED shows it (lit = Russian). Fed by io.onruslat. */
+bool vector_ruslat = false;
+#endif
+
 #if HAVE_GPERFTOOLS
 #include <gperftools/profiler.h>
 #endif
@@ -227,6 +243,23 @@ int main(int argc, char ** argv)
                 Board::ResetMode::BLKVVOD : Board::ResetMode::BLKSBR);
     };
 
+#ifdef VECTOR06_GUI
+    /* Always track the РУС/ЛАТ latch for the VKBD LED; the autostart
+     * BLKSBR sequence detector rides along and disarms itself once it
+     * fires (it must not clear io.onruslat, or the LED would freeze). */
+    int autostart_seq = 0;
+    bool autostart_armed = Options.autostart;
+    io.onruslat = [&](bool ruslat) {
+        vector_ruslat = ruslat;
+        if (autostart_armed) {
+            autostart_seq = (autostart_seq << 1) | (ruslat ? 1 : 0);
+            if ((autostart_seq & 15) == 6) {
+                board.reset(Board::ResetMode::BLKSBR);
+                autostart_armed = false;
+            }
+        }
+    };
+#else
     if (Options.autostart) {
         int seq = 0;
         io.onruslat = [&seq](bool ruslat) {
@@ -237,6 +270,7 @@ int main(int argc, char ** argv)
             }
         };
     }
+#endif
 
     board.reset(Board::ResetMode::BLKVVOD);
 
@@ -277,6 +311,36 @@ int main(int argc, char ** argv)
 #endif
 
     Emulator lator(board);
+#ifdef VECTOR06_GUI
+    /* Service GUI windows live on the UI thread for the whole run. */
+    MainMenu menu;
+    AboutWindow about;
+    VirtualKeyboard vkbd;
+    StateWindow sb;
+    RomBrowser browser;
+    MapWindow mapk;
+    GameCenter gc;
+    MessageDialog msg_dlg;
+    vkbd.prepare();
+    vkbd.set_ruslat_source(&vector_ruslat);
+
+    /* The startup ROM (CrossMix passes it as --rom) was already loaded
+     * into the machine above; bind its path so the save-state directory
+     * and the Save Preview item know the ROM. */
+    if (!Options.romfile.empty()) {
+        lator.set_rom_path(Options.romfile);
+    }
+
+    /* UILayer array in z-order (bottom to top, PSP order): the popups
+     * are mutually exclusive, the modal dialog sits above them and the
+     * VKBD is topmost (it doubles as the Map Keys picker). TV draws it
+     * above the picture. */
+    UILayer * ui_layers[] = {
+        &sb, &browser, &gc, &about, &menu, &mapk, &msg_dlg, &vkbd
+    };
+    tv.set_ui_layers(ui_layers, (int)(sizeof(ui_layers) / sizeof(ui_layers[0])));
+    lator.set_gui(&menu, &about, &vkbd, &sb, &browser, &mapk, &gc, &msg_dlg);
+#endif
     lator.start_emulator_thread();
     lator.run_event_loop();
 
