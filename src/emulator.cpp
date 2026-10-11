@@ -465,12 +465,16 @@ void Emulator::save_state(vector<uint8_t> & to)
     this->board.serialize(to);
 }
 
-/* The state file carries only memory, CPU and the visible IO part;
- * the sound chips (8253, AY) and the Soundnik mirrors/event queue
- * stay out of it. Reset the whole machine through the same path a
- * ROM load uses before applying the snapshot, so no pre-load
- * register contents survive — without this, a note playing at the
- * load moment drones on forever after the restore. */
+/* The state file carries memory, CPU, the visible IO part and the full
+ * i8253 timer programming (the TIMER chunk): Exolon and other raster
+ * games anchor their frame to a free-running counter, so losing it
+ * across a save/load makes the picture flicker. The AY chip and the
+ * Soundnik event queue still stay out of it. Reset the whole machine
+ * through the same path a ROM load uses before applying the snapshot,
+ * so no pre-load register contents survive - without this, a note
+ * playing at the load moment drones on forever after the restore. The
+ * reset reprograms the timer to mode 0, but the TIMER deserialize that
+ * follows overwrites it, so the programming is faithfully restored. */
 static bool state_chunks_valid(std::vector<uint8_t> & data)
 {
     auto it = data.begin();
@@ -485,6 +489,7 @@ static bool state_chunks_valid(std::vector<uint8_t> & data)
             case SerializeChunk::IO:
             case SerializeChunk::CPU:
             case SerializeChunk::BOARD:
+            case SerializeChunk::TIMER:
                 break;
             default:
                 return false;

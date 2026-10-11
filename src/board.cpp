@@ -606,6 +606,7 @@ bool Board::check_breakpoint()
 void Board::serialize(std::vector<uint8_t> &to) {
     this->memory.serialize(to);
     this->io.serialize(to);
+    this->io.serialize_timer(to);
     i8080cpu::serialize(to);
 
     this->serialize_self(to);
@@ -617,14 +618,24 @@ void Board::serialize_self(SerializeChunk::stype_t & to) const
     chunk.push_back(static_cast<uint8_t>(this->inte));
     chunk.push_back(static_cast<uint8_t>(this->irq));
     chunk.push_back(static_cast<uint8_t>(this->irq_carry));
+    /* Mid-frame timing carry-over: the fractional-T-state remainder held
+     * across the frame boundary and the pending OUT opcode. Restoring them
+     * keeps the first frame after a LOAD cycle-exact. */
+    SerializeChunk::append_i32_le(chunk, static_cast<int32_t>(this->instr_time));
+    SerializeChunk::append_i32_le(chunk, static_cast<int32_t>(this->between));
+    SerializeChunk::append_i32_le(chunk, static_cast<int32_t>(this->last_opcode));
     SerializeChunk::insert_chunk(to, SerializeChunk::BOARD, chunk);
 }
 
 void Board::deserialize_self(SerializeChunk::stype_t::iterator from, uint32_t size)
 {
+    (void) size;
     this->inte = static_cast<bool>(*from++);
     this->irq = static_cast<bool>(*from++);
     this->irq_carry = static_cast<bool>(*from++);
+    this->instr_time = SerializeChunk::read_i32_le(from);
+    this->between = SerializeChunk::read_i32_le(from);
+    this->last_opcode = SerializeChunk::read_i32_le(from);
 }
 
 bool Board::deserialize(std::vector<uint8_t> &from) {
@@ -642,6 +653,9 @@ bool Board::deserialize(std::vector<uint8_t> &from) {
                     break;
                 case SerializeChunk::IO:
                     this->io.deserialize(begin, size);
+                    break;
+                case SerializeChunk::TIMER:
+                    this->io.deserialize_timer(begin, size);
                     break;
                 case SerializeChunk::CPU:
                     i8080cpu::deserialize(begin, size);

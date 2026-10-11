@@ -189,8 +189,10 @@ namespace StateFile
             return false;
         }
         if (get32(data.data() + 4) != (uint32_t)STATE_VERSION) {
-            printf("StateFile: unknown version %lu: %s\n",
-                   (unsigned long)get32(data.data() + 4), path.c_str());
+            printf("StateFile: state version %lu, this build expects %d "
+                   "(re-save the state with the current emulator): %s\n",
+                   (unsigned long)get32(data.data() + 4), STATE_VERSION,
+                   path.c_str());
             return false;
         }
 

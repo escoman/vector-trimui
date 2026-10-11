@@ -29,9 +29,12 @@
  */
 namespace StateFile
 {
-    /* Bumped whenever the serialized Board layout changes; a file
-     * with an unknown version is refused as "Invalid state". */
-    static const int STATE_VERSION = 1;
+    /* Bumped whenever the serialized Board layout changes. Version 2
+     * added the TIMER chunk (i8253 programming) and the mid-frame timing
+     * carry-over, which a v1 file does not have; v1 is refused with a
+     * "save again" message rather than migrated. A file with an unknown
+     * version is refused as "Invalid state". */
+    static const int STATE_VERSION = 2;
     /* magic[4] + version u32 LE + timestamp u64 LE (unix seconds,
      * the moment of saving; shown in the slot). */
     static const int HEADER_SIZE = 16;

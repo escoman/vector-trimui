@@ -1,6 +1,8 @@
 #pragma once
 
 #include <inttypes.h>
+#include <vector>
+#include "serialize.h"
 
 #define WRITE_DELAY 2
 #define LATCH_DELAY 1
@@ -34,7 +36,8 @@ class CounterUnit
     int delay;
 
 public:
-    CounterUnit() : latch_value(-1), write_state(0), value(0), mode_int(0),
+    CounterUnit() : latch_value(-1), write_state(0), latch_mode(0), out(0),
+        value(0), mode_int(0), write_lsb(0), write_msb(0),
         loadvalue(0), flags(0), delay(0)
     {
 
@@ -304,6 +307,41 @@ public:
         }
         return value;
     }
+
+    /* Save/restore the full counter programming. The Exolon frame anchor
+     * is the free-running ch1 rate generator (loadvalue 29952, mode 2);
+     * if it is not restored after a LOAD the game keeps reading IN 0x0A == 0
+     * forever and the raster effects lose their frame boundary. write_state
+     * is state, not scratch: it alternates the lsb/msb of the paired IN. */
+    void serialize(std::vector<uint8_t> & to) const
+    {
+        SerializeChunk::append_i32_le(to, static_cast<int32_t>(value));
+        SerializeChunk::append_i32_le(to, static_cast<int32_t>(latch_value));
+        SerializeChunk::append_i32_le(to, static_cast<int32_t>(delay));
+        SerializeChunk::append_i32_le(to, static_cast<int32_t>(out));
+        SerializeChunk::append_u16_le(to, static_cast<uint16_t>(loadvalue));
+        to.push_back(static_cast<uint8_t>(mode_int));
+        to.push_back(static_cast<uint8_t>(latch_mode));
+        to.push_back(static_cast<uint8_t>(write_state));
+        to.push_back(write_lsb);
+        to.push_back(write_msb);
+        SerializeChunk::append_u32_le(to, flags);
+    }
+
+    void deserialize(std::vector<uint8_t>::iterator & it)
+    {
+        value = SerializeChunk::read_i32_le(it);
+        latch_value = SerializeChunk::read_i32_le(it);
+        delay = SerializeChunk::read_i32_le(it);
+        out = SerializeChunk::read_i32_le(it);
+        loadvalue = SerializeChunk::read_u16_le(it);
+        mode_int = *it++;
+        latch_mode = *it++;
+        write_state = *it++;
+        write_lsb = *it++;
+        write_msb = *it++;
+        flags = SerializeChunk::read_u32_le(it);
+    }
 };
 
 
@@ -355,6 +393,21 @@ public:
         return this->counters[0].Count(cycles) +
             this->counters[1].Count(cycles) +
             this->counters[2].Count(cycles);
+    }
+
+    void serialize(std::vector<uint8_t> & to) const
+    {
+        for (int i = 0; i < 3; ++i)
+            this->counters[i].serialize(to);
+        to.push_back(this->control_word);
+    }
+
+    void deserialize(std::vector<uint8_t>::iterator it, uint32_t size)
+    {
+        (void) size;
+        for (int i = 0; i < 3; ++i)
+            this->counters[i].deserialize(it);
+        this->control_word = *it;
     }
 };
 

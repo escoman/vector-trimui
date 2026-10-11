@@ -363,8 +363,29 @@ public:
         tmp.push_back(PA2);
         tmp.push_back(PB2);
         tmp.push_back(PC2);
+        /* Staged OUT not yet committed (half-tick): an instruction that
+         * wrote a port/palette but whose commit_time had not been reached
+         * when the snapshot was taken. */
+        SerializeChunk::append_i32_le(tmp, static_cast<int32_t>(outport));
+        SerializeChunk::append_i32_le(tmp, static_cast<int32_t>(outbyte));
+        SerializeChunk::append_i32_le(tmp, static_cast<int32_t>(palettebyte));
 
         SerializeChunk::insert_chunk(to, SerializeChunk::IO, tmp);
+    }
+
+    /* The i8253 lives behind this reference; expose a passthrough so the
+     * Board can emit a dedicated TIMER chunk without making 'timer' a
+     * public member. */
+    void serialize_timer(std::vector<uint8_t> & to)
+    {
+        std::vector<uint8_t> tmp;
+        this->timer.serialize(tmp);
+        SerializeChunk::insert_chunk(to, SerializeChunk::TIMER, tmp);
+    }
+
+    void deserialize_timer(std::vector<uint8_t>::iterator it, uint32_t size)
+    {
+        this->timer.deserialize(it, size);
     }
 
     void deserialize(std::vector<uint8_t>::iterator it, uint32_t size)
@@ -380,5 +401,8 @@ public:
         PA2 = *it++;
         PB2 = *it++;
         PC2 = *it++;
+        outport = SerializeChunk::read_i32_le(it);
+        outbyte = SerializeChunk::read_i32_le(it);
+        palettebyte = SerializeChunk::read_i32_le(it);
     }
 };
