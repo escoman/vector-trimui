@@ -221,8 +221,10 @@ private:
                 SDL_SCANCODE_RALT,          0x002,
                 SDL_SCANCODE_TAB,           0x001,
                 /* VKBD numpad cluster: HOME/END stand in for the
-                 * ^\ (F7) and СТР (F8) keys, matching the PSP port. */
-                SDL_SCANCODE_HOME,          0x101, // ^\
+                 * ^\ (F7) and СТР (F8) keys, matching the PSP port.
+                 * NOTE: never put a backslash last on a // line, it
+                 * line-splices the next entry into the comment! */
+                SDL_SCANCODE_HOME,          0x101, // ^\ (F7 alias)
                 SDL_SCANCODE_END,           0x102, // СТР
         };
 
@@ -446,6 +448,12 @@ private:
                 SDL_SCANCODE_RETURN,        0x004,
                 SDL_SCANCODE_RALT,          0x002,
                 SDL_SCANCODE_TAB,           0x001,
+                /* VKBD numpad cluster: HOME/END stand in for the
+                 * ^\ (F7) and СТР (F8) keys, matching the PSP port.
+                 * NOTE: never put a backslash last on a // line, it
+                 * line-splices the next entry into the comment! */
+                SDL_SCANCODE_HOME,          0x101, // ^\ (F7 alias)
+                SDL_SCANCODE_END,           0x102, // СТР
 #endif
                 //SCANCODE_SPACE,             0x780,
         };
